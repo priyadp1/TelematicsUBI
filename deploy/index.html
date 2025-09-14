@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Telematics UBI — Demo</title>
+    <style>
+      body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; margin:24px; }
+      .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+      label { display:flex; flex-direction:column; font-size:14px; }
+      input { padding:8px; border:1px solid #ddd; border-radius:8px; }
+      button { padding:10px 16px; border-radius:10px; border:1px solid #ccc; background:#fff; cursor:pointer; }
+      .row { margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+      .muted { opacity:.8; }
+      table { border-collapse: collapse; margin-top:8px; }
+      th, td { padding:6px 10px; border:1px solid #eee; text-align:left; }
+      .card { border:1px solid #eee; padding:12px; border-radius:10px; margin-top:16px; }
+      .ok { color:#0a7; } .err { color:#c33; }
+      .tiny { font-size:12px; }
+    </style>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  </head>
+  <body>
+    <h1>Telematics UBI — Demo Dashboard</h1>
+
+    <div id="root"></div>
+
+    
+    <div class="card">
+      <div class="row">
+        <button id="fetchLast5Btn">Fetch last 5 (public API key)</button>
+        <span class="muted tiny">Reads from AppSync using API key (no login).</span>
+      </div>
+      <div id="last5Wrap" style="display:none">
+        <div class="muted">Latest 5 (listDriverFeatures)</div>
+        <table>
+          <thead><tr><th>Date</th><th>Driver</th><th>Risk</th><th>Premium</th><th>ID</th></tr></thead>
+          <tbody id="last5Body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    
+    <div class="card">
+      <div class="row">
+        <strong>Auth</strong>
+        <input id="uName" placeholder="username" />
+        <input id="uPass" type="password" placeholder="password" />
+        <button id="btnSignIn">Sign in</button>
+        <button id="btnSignOut">Sign out</button>
+        <span id="authStatus" class="tiny muted">Signed out</span>
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <strong>CSV → GraphQL (writes via Cognito)</strong>
+        <input id="csvFile" type="file" accept=".csv" />
+        <button id="btnUploadCsv">Upload & Create</button>
+        <span id="csvMsg" class="tiny muted"></span>
+      </div>
+      <div class="tiny muted">Expected headers (case-insensitive): driverId,date,miles,trips,durationH,speedMean,speedStd,harshBrakeRate,harshAccelRate,sharpTurnRate,nightPct,schoolZonePct,riskScore,premium</div>
+    </div>
+
+    <script type="module">
+      import { Amplify } from 'https://esm.sh/aws-amplify@6';
+      import { signIn, signOut, getCurrentUser } from 'https://esm.sh/aws-amplify@6/auth';
+      import { API } from 'https://esm.sh/@aws-amplify/api-graphql@6';
+      import awsExports from './aws-exports.js';
+      import * as gqlQueries from './graphql/queries.js';
+      import * as gqlMutations from './graphql/mutations.js';
+
+      
+      Amplify.configure(awsExports); // enables Cognito for 'userPool' mode
+      
+      const APPSYNC_API_KEY = 'da2-jutxpmnclrhnpeor7zrpinrjwy';
+      Amplify.configure({
+        API: { GraphQL: {
+          endpoint: awsExports.aws_appsync_graphqlEndpoint,
+          region: awsExports.aws_appsync_region || awsExports.aws_project_region,
+          defaultAuthMode: 'apiKey',
+          apiKey: APPSYNC_API_KEY
+        } }
+      });
+
+      
+      window.aws = { API, signIn, signOut, getCurrentUser };
+      window.gql = { queries: gqlQueries, mutations: gqlMutations };
+
+      
+      async function fetchLast5Public() {
+        try {
+          const resp = await API.graphql({
+            query: /* GraphQL */ `query List5 { listDriverFeatures(limit:5){ items { id driverId date riskScore premium } } }`,
+            authMode: 'apiKey'
+          });
+          const items = resp?.data?.listDriverFeatures?.items || [];
+          const tbody = document.getElementById('last5Body');
+          tbody.innerHTML = items.map(it => `
+            <tr>
+              <td>${it.date ?? ''}</td>
+              <td>${it.driverId ?? ''}</td>
+              <td>${it.riskScore ?? ''}</td>
+              <td>${it.premium != null ? '$'+it.premium : ''}</td>
+              <td class="tiny">${it.id ?? ''}</td>
+            </tr>
+          `).join('');
+          document.getElementById('last5Wrap').style.display = items.length ? 'block' : 'none';
+          if (!items.length) alert('No items yet.');
+        } catch (e) {
+          console.error(e);
+          alert('Public fetch failed. Check console.');
+        }
+      }
+
+      document.getElementById('fetchLast5Btn')?.addEventListener('click', fetchLast5Public);
+
+      
+      const authStatus = (msg, cls='muted') => {
+        const el = document.getElementById('authStatus');
+        el.textContent = msg; el.className = 'tiny ' + cls;
+      };
+
+      document.getElementById('btnSignIn')?.addEventListener('click', async () => {
+        const username = document.getElementById('uName').value.trim();
+        const password = document.getElementById('uPass').value;
+        try {
+          await signIn({ username, password });
+          const u = await getCurrentUser();
+          authStatus(`Signed in as ${u.username}`, 'ok tiny');
+        } catch (e) {
+          console.error(e);
+          authStatus('Sign-in failed', 'err tiny');
+          alert('Sign-in failed. See console for details.');
+        }
+      });
+
+      document.getElementById('btnSignOut')?.addEventListener('click', async () => {
+        try { await signOut(); authStatus('Signed out'); } catch(e){ console.error(e); }
+      });
+
+      
+      function toNum(v){ if (v === '' || v == null) return undefined; const n = Number(v); return Number.isFinite(n) ? n : undefined; }
+
+      document.getElementById('btnUploadCsv')?.addEventListener('click', async () => {
+        const file = document.getElementById('csvFile').files?.[0];
+        const msg = (t, cls='muted') => { const el = document.getElementById('csvMsg'); el.textContent = t; el.className = 'tiny ' + cls; };
+
+        if (!file) { alert('Choose a CSV first.'); return; }
+
+        
+        try { await getCurrentUser(); } catch { alert('Please sign in (Cognito) first.'); return; }
+
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: async (res) => {
+            const rows = res.data || [];
+            if (!rows.length) { msg('CSV empty', 'err'); return; }
+
+            msg(`Parsed ${rows.length} rows. Uploading…`);
+            let ok = 0, fail = 0;
+
+            for (const r of rows) {
+              const input = {
+                driverId: (r.driverId ?? r.driver_id ?? r.DRIVERID ?? '').toString(),
+                date: (r.date ?? r.DATE ?? '').toString().slice(0,10),
+                miles: toNum(r.miles ?? r.MILES),
+                trips: toNum(r.trips ?? r.TRIPS),
+                durationH: toNum(r.durationH ?? r.duration_h ?? r.DURATIONH),
+                speedMean: toNum(r.speedMean ?? r.SPEEDMEAN),
+                speedStd: toNum(r.speedStd ?? r.SPEEDSTD),
+                harshBrakeRate: toNum(r.harshBrakeRate ?? r.HARSHBRAKERATE),
+                harshAccelRate: toNum(r.harshAccelRate ?? r.HARSHACCELRATE),
+                sharpTurnRate: toNum(r.sharpTurnRate ?? r.SHARPTURNRATE),
+                nightPct: toNum(r.nightPct ?? r.NIGHTPCT),
+                schoolZonePct: toNum(r.schoolZonePct ?? r.SCHOOLZONEPCT),
+                riskScore: toNum(r.riskScore ?? r.RISKSCORE),
+                premium: toNum(r.premium ?? r.PREMIUM),
+                updatedAt: new Date().toISOString()
+              };
+
+              
+              if (!input.driverId || !input.date) { fail++; continue; }
+
+              try {
+                await API.graphql({
+                  query: gqlMutations.createDriverFeature,
+                  variables: { input },
+                  authMode: 'userPool'
+                });
+                ok++;
+              } catch (e) {
+                console.warn('Row failed', e);
+                fail++;
+              }
+              
+              await new Promise(r => setTimeout(r, 80));
+            }
+            msg(`Done: ${ok} created, ${fail} failed.`, fail ? 'err' : 'ok');
+          },
+          error: (err) => { console.error(err); msg('CSV parse error', 'err'); }
+        });
+      });
+    </script>
+
+    <!-- Your app (kept as-is, but will write via Cognito now) -->
+    <script type="text/babel" data-presets="react,env" src="/static/app.jsx?v=10"></script>
+  </body>
+</html>
