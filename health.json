@@ -1,0 +1,1 @@
+{"Protocol":"HTTP","Path":"/health","Interval":5,"Timeout":2,"HealthyThreshold":1,"UnhealthyThreshold":3}

@@ -1,0 +1,15 @@
+{
+  "ImageRepository": {
+    "ImageIdentifier": "692859929484.dkr.ecr.us-east-1.amazonaws.com/telematicsubi-api:latest",
+    "ImageRepositoryType": "ECR",
+    "ImageConfiguration": {
+      "Port": "8000",
+      "RuntimeEnvironmentVariables": {
+        "APPSYNC_URL": "https://gdroqnyisbfgdlvbph6ko2ctde.appsync-api.us-east-1.amazonaws.com/graphql",
+        "APPSYNC_API_KEY": "da2-jutxpmnclrhnpeor7zrpinrjwy"
+      }
+    }
+  },
+  "AuthenticationConfiguration": { "AccessRoleArn": "arn:aws:iam::692859929484:role/AppRunnerECRAccessRole" },
+  "AutoDeploymentsEnabled": true
+}
