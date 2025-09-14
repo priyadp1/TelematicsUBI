@@ -1,0 +1,20 @@
+[
+  "trips",
+  "miles",
+  "duration_h",
+  "speed_mean",
+  "speed_std",
+  "harsh_brake_rate",
+  "harsh_accel_rate",
+  "sharp_turn_rate",
+  "night_pct",
+  "school_zone_pct",
+  "rush_hour_pct",
+  "years_licensed",
+  "prior_claims_count",
+  "prior_violations",
+  "vehicle_year",
+  "safety_rating",
+  "local_crash_rate",
+  "crime_index"
+]
